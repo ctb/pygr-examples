@@ -1,0 +1,549 @@
+==============================================================
+Genome-Scale Motif Searching in Python using motility and pygr
+==============================================================
+
+.. Contents::
+
+Aug 3, 2008.
+
+This tutorial is intended to give you a number of recipes for doing
+basic kinds of genome-scale motif searching and feature correlation in
+Python.
+
+Let's start by importing a few Python modules.
+
+   >>> import sys
+   >>> sys.path.insert(0, 'code/')
+
+First, motility:
+
+   >>> import motility
+
+and second, a few pygr modules:
+
+   >>> from pygr import seqdb, cnestedlist
+
+motility is a fast motif-searching toolkit that allows you to
+search for consensus and matrix motifs in genomic sequence.  pygr is
+a graph database package that can be used to load sequence and
+sequence annotations into a format that's nice to query.
+
+Loading genomic DNA
+===================
+
+Using pygr you can load and extract segments of genomes quite nicely.
+Let's load in the Drosophila melanogaster genome:
+
+  >>> d_mel = seqdb.BlastDB('/scratch2/titus/dros-ucsc/fa/dm3.fa')
+
+Here, `dm3.fa` is just a FASTA file full of the chromosomal sequences
+for Build 3 of the *Drosophila melanogaster* genome, and `BlastDB` gives
+us a nice dictionary interface to it.  So, for example, we can iterate
+through all of the chromosome names like so:
+
+  >>> for k in d_mel:
+  ...    print k
+  chr2LHet
+  chr2RHet
+  chr3L
+  chr3R
+  chrM
+  chrU
+  chrUextra
+  chrXHet
+  chr2L
+  chr2R
+  chr3LHet
+  chr3RHet
+  chr4
+  chrX
+  chrYHet
+
+If we want to extract DNA sequences, all we need to do is specify the
+sequence name:
+
+  >>> dna = d_mel['chr2L']
+  >>> len(dna)
+  23011544
+
+To get (for example) the first 5 megabases of this sequence, just ask
+for it as if 'dna' were a regular Python sequence:
+
+  >>> dna[0:5000000]
+  chr2L[0:5000000]
+
+If you want the actual DNA sequence, just use 'str' to turn it into a string:
+
+  >>> str(dna[0:50])
+  'Cgacaatgcacgacagaggaagcagaacagatatttagattgcctctcat'
+
+Searching DNA for consensus motifs
+==================================
+
+Suppose you want to search genomic DNA with a dorsal-like consensus
+sequence, 'GGGWWWWCCC', where 'W' stands for 'A or T'.  (This is an
+IUPAC symbol; see the bottom of the `motility intro
+<http://cartwheel.caltech.edu/motility/intro.html>`__ for a short
+guide.
+
+First, extract the DNA you're interested in -- let's use the first megabase of
+*D. mel.* chr2L for a starting point:
+
+   >>> dna = str(dna[0:1000000])
+
+Now search for matches using 'motility.find_iupac':
+
+   >>> dorsal_matches = motility.find_iupac(dna, 'GGGWWWWCCC')
+
+`dorsal_matches` now contains a list of tuples, with each tuple consisting of
+four elements: the start and end of each match, the strand (+1 or -1),
+and the actual motif matched.  For example,
+
+   >>> print dorsal_matches[0]
+   (180553, 180563, 1, 'GGGAAAACCC')
+
+This tells you that there is a match to 'GGGWWWWCCC' from position 180553
+to position 180563 on the top strand in chr2L, and that the match is
+'GGGAAAACCC'.  Let's double-check -- is that what we get when we ask
+the Drosophila genome for that sequence?
+
+   >>> print d_mel['chr2L'][180553:180563]
+   GGGAAAACCC
+
+Note that it's also a reverse-complement match:
+
+   >>> print -d_mel['chr2L'][180553:180563]
+   GGGTTTTCCC
+
+How many matches did we get, come to think of it?
+
+   >>> len(dorsal_matches)
+   14
+
+Well, ok, that's not bad... but GGGWWWWCCC is not a perfect motif for
+finding dorsal sites.  Many known dorsal sites don't match that exact
+motif, so what we really want to do is do a weight-matrix search for
+dorsal.  That should be more sensitive and specific.
+
+(Digression: do you all know what a position-weight matrix is and
+how it works?)
+
+Searching DNA with a weight matrix
+==================================
+
+To build a weight matrix, you need a list of known binding sites.  In this
+case, I've already downloaded and saved the Dorsal (Dl) binding sites
+from Dr. Papatsenko's Web site in the file 'data/dorsal-site-list'.
+This is just a straight text file full of binding sites, one to a line:
+
+  >>> dorsal_sites = [ line.strip() for line in open('data/dorsal-site-list') ]
+  >>> len(dorsal_sites)
+  112
+  >>> dorsal_sites[0]
+  'GGGATTTCCC'
+
+To make this into a PWM, you can use motility's 'make_pwm' function:
+
+  >>> dorsal_pwm = motility.make_pwm(dorsal_sites)
+  >>> print dorsal_pwm
+  [[0.0, 2.3219280948873622, 4.5235619560570131, 3.2730184944064158],
+   [0.0, 1.5849625007211561, 6.7279204545631988, 2.5849625007211561],
+   [3.5235619560570131, 1.5849625007211561, 5.4093909361377017, 0.0],
+   [3.2094533656289497, 0.0, 1.2479275134435854, 0.90689059560851826],
+   [4.0000000000000009, 0.0, 1.4150374992788444, 4.2479275134435861],
+   [3.1699250014423122, 0.0, 0.0, 6.7142455176661224],
+   [0.0, 2.8073549220576037, 2.5849625007211552, 6.6724253419714952],
+   [0.0, 6.0443941193584534, 1.5849625007211561, 5.5235619560570131],
+   [0.0, 6.8201789624151887, 0.0, 0.0],
+   [0.0, 4.8579809951275728, 2.4150374992788444, 1.7369655941662066]]
+
+There are a variety of ways to make a PWM, and you can read more about
+`make_pwm` in the `motility tutorial
+<http://cartwheel.caltech.edu/motility/python-tutorial.html>`__.  By
+default, `make_pwm` calculates the log of the frequency of each
+nucleotide's occurrence, which is why we have all the ugly numbers above.
+
+Now, PWMs assign a score to any N-mer (in this case, 10-mer), if you
+want to pick out specific sites, you need to choose a threshold below
+which scores are too low to count.  There are a variety of ways of
+doing this, and I'll leave you to figure out what makes sense to you.
+I personally like to look at the scores of known sites; let's do that
+by building a score for each of the input sites.
+
+  >>> scores = [ dorsal_pwm.calc_score(site) for site in dorsal_sites ]
+  >>> print 'min =', min(scores), '; max =', max(scores)
+  min = 45.059492414 ; max = 55.2274791624
+
+This tells us that using this PWM, built from the list of input sites,
+the lowest score among those sites is 45.06, and the highest score is
+55.23.  That low score is probably a good choice for a starting threshold;
+let's see what happens when we search the first mb of chr2L in
+*D. melanogaster.*
+
+  >>> threshold = min(scores)
+  >>> dorsal_matches = dorsal_pwm.find(dna, threshold)
+  >>> len(dorsal_matches)
+  5039
+
+Whaah!  That's a lot of sites!  Why are there so many more PWM matches
+in there than there are motif matches to 'GGGWWWWCCC'?!
+
+Well, first, it turns out that the consensus for dorsal based on
+those input sites is *much* looser than 'GGGWWWWCCC':
+
+  >>> print motility.make_iupac_motif(dorsal_sites)
+  NBNNNWBBCN
+
+and if you search with *that* you find a lot more sites than with the PWM:
+
+   >>> len(motility.find_iupac(dna, 'NBNNNWBBCN'))
+   104611
+
+Before we discuss these results more, let's look at what happens if we
+choose a tighter threshold for the PWM; let's try taking the midpoint
+between the high and the low scores from the input sites:
+
+   >>> dorsal_matches = dorsal_pwm.find(dna, 50)
+   >>> print len(dorsal_matches)
+   388
+
+Hmm, 10 times fewer than with a threshold of 45!
+
+So what's going on here?
+
+First, let's think about probabilities.  Assuming AT/GC content of
+50/50, a 10 base matrix is going to match randomly at least once in a
+megabase -- that's based on the calculating that a 10-base exact
+sequences matches once in a million random sequences.  However, a PWM
+is supposed to allow fuzzy matching, and for that you've got to drop
+the threshold; since the number of random matches scales exponentially
+up as the threshold stringency decreases, you actually get far more
+matches than the strict case would predict.  That's why you get so many
+more matches (5039) with a threshold of 45 than with a threshold of
+50 (388).
+
+Second, IUPAC consensus motifs are *guaranteed* to match at least
+as many motifs as a PWM built from the same site list, if the PWM
+score is chose as the lowest score among the input sites.  This is
+because PWMs are more discriminating than IUPAC motifs, because
+they assign weighted scores to each nucleotide in each position.  In turn,
+this explains why you get many more matches (104611) with the IUPAC
+consensus motif than with the PWM at a threshold of 45 (5039).
+
+Third, thinking biologically, you should be extremely unhappy with
+*all* of these results!  While there's only 388 matches in the first
+megabase with a threshold of 50, the Drosophila genome is
+approximately 180 mb in size. You would expect roughly 70,000 matches
+in the entire genome, which seems biologically implausible -- and
+that's if you choose a threshold that intentionally omits more than
+half of the known Dorsal sites!
+
+All in all, this is why motif searching is so frustrating.  PWMs have
+a *very* high false positive rate, and you simply can't take a predicted
+site at face value.  If someone hands you a bunch of 10 base sites and tells
+you that you can use these sites to build a PWM and predict binding sites
+on a genomic scale, *be skeptical* :).
+
+Estimating false positives
+==========================
+
+Let's briefly digress and talk about the problem of false positives.
+How can you estimate PWM false positive rates for a given threshold?
+
+Well, motility has a very simple routine, 'weight_sites_over', that
+can help you do this.  Let's try it out:
+
+   >>> p1 = dorsal_pwm.weight_sites_over(45)
+   >>> p2 = dorsal_pwm.weight_sites_over(50)
+   >>> p3 = dorsal_pwm.weight_sites_over(55)
+   >>> print '%g, %g, %g' % (p1, p2, p3)
+   0.00210381, 0.000130653, 9.53674e-07
+
+Basically what this function does is to calculate the number of
+matches you'd expect at random with that threshold, in an infite-sized
+genome with a 50/50 AT/GC content, represented as a probability per
+base.  (You can modify the AT/GC content if you like; see the motility
+docs.)
+
+So, for example, in a mb of sequence, you'd expect the following
+number of random matches with a threshold of 45, 50, and 55:
+
+   >>> e1 = p1 * 1000000
+   >>> e2 = p2 * 1000000
+   >>> e3 = p3 * 1000000
+   >>> print '%g, %g, %g' % (e1, e2, e3)
+   2103.81, 130.653, 0.953674
+
+Comparing that to the actual numbers for the thresholds of 45 and 50,
+calculated above to be 5039 and 388 matches, that's pretty good -- it
+implies that this PWM is picking up more sites than you would predict
+you'd find at random.
+
+Looking for homotypic clusters
+==============================
+
+Now, suppose you know that Dorsal multimerizes, so you'd expect to see
+multiple binding sites close to each other (incidentally, it does :).
+What is a good way to search for multiple sites in close proximity?
+
+This is where we can start to leverage pygr a bit more.  Let's run through
+an example first, and then I'll explain what's going on.
+
+Start by running the search with the lowest threshold of 45, again:
+
+  >>> threshold = min(scores)
+  >>> dorsal_matches = dorsal_pwm.find(dna, threshold)
+  >>> len(dorsal_matches)
+  5039
+
+Now, let's use a little routine I wrote to map these onto the Drosophila
+melanogaster genome in a way that lets us retrieve them by proximity:
+
+  >>> import pygr_motif
+  >>> dorsal_map = pygr_motif.map_matches(d_mel, d_mel['chr2L'][:1000000], dorsal_matches)
+
+(Note that we need to tell `pygr_motif` what sequences these came from --
+in this case, 'chr2L', starting from position 0.  If these matches actually
+came from another part of the genome, or start at a position other than 0,
+we need to adjust the sequence slice we give to `map_matches` accordingly.)
+
+Now, what 'dorsal_map' gives us is the ability to pull out motif
+matches by sequence position.  Remember that section above where
+d_mel['chr2L'][180553:180563] was a good match to a Dorsal consensus
+site?  Let's see how many sites that region contains:
+
+  >>> sites = dorsal_map[d_mel['chr2L'][180553:180563]].keys()
+  >>> len(sites)
+  2
+
+Ah-hah!  That's right, there are two sites there!  What are they?
+
+  >>> for site in sites:
+  ...    print site.sequence
+  GGGAAAACCC
+  GGAAAACCC
+
+OK, that's a bit strange -- why is one site only 9 bp?  It turns out
+that pygr will return parts of any *overlapping* sites, too.  To change
+this behavior you need to tell 'keys()', above, to return only full-length
+matches, like so:
+
+  >>> sites = dorsal_map[d_mel['chr2L'][180553:180563]].keys(minAlignSize=10)
+  >>> len(sites)
+  1
+
+(You can see the other magic incantations that affect the behavior of
+'keys' in the `pygr documentation
+<http://bioinfo.mbi.ucla.edu/pygr_0_7_b3/sqlgraph-module.html#SECTION000237000000000000000>`__.)
+
+OK, apart from that digression, at least we can get back what we put in.
+How many sites are there in the 1 kb region centered on that site, though?
+
+  >>> region = d_mel['chr2L'][180053:181063]
+  >>> sites = dorsal_map[region].keys()
+  >>> print len(sites)
+  3
+
+Three sites!  OK, where are they?
+
+  >>> for k in sites:
+  ...   print k.sequence.start, k.sequence.stop
+  180257 180267
+  180553 180563
+  180554 180564
+
+I will leave the significance calculation up to you (hint: not
+very!). The point is that we can use this to build a general
+cluster-finding algorithm, though.  How?  Well, since we can retrieve
+sites by proximity, we could just iterate over the whole segment
+looking for 1kb chunks of DNA that contain more than one site.  We could
+also iterate over the *motifs*, and only start searching in a place
+where there's already a motif.  To do that, we'll have to order the
+motifs, though:
+
+  >>> dorsal_matches = list(dorsal_matches)
+  >>> dorsal_matches.sort()			# sort by start position
+
+OK, now let's iterate over the matches, and save regions that have
+two or more motifs in them:
+
+  >>> CLUSTER_SIZE=300
+  >>> save_regions = []
+
+  >>> i = 0
+  >>> while i < len(dorsal_matches):
+  ...   start = dorsal_matches[i][0]	# start position of i'th motif
+  ...
+  ...   region = d_mel['chr2L'][start:start + CLUSTER_SIZE]
+  ...   motifs = dorsal_map[region].keys()
+  ...
+  ...   if len(motifs) > 1:		# more than one motif? save.
+  ...      save_regions.append(region)
+  ...
+  ...   i += len(motifs)		# skip forward 1 or more motifs.
+
+  >>> print len(save_regions)
+  1304
+
+We can look at a few of these regions to see how many sites there are in each
+region:
+
+  >>> for region in save_regions[:5]:
+  ...   print repr(region), len(dorsal_map[region].keys())
+  chr2L[298:598] 2
+  chr2L[756:1056] 2
+  chr2L[1214:1514] 2
+  chr2L[1672:1972] 2
+  chr2L[2130:2430] 2
+
+At this point we could do all sorts of fun things like calculate the
+likelihood of seeing each cluster, or look at the distribution of
+spacing between the sites, or look at their association with genes.
+(We'll do this last one later on.)
+
+Looking for heterotypic clusters
+================================
+
+Suppose we know that our transcription factor interacts with other
+transcription factors, and we want to look for binding sites for
+multiple transcription factors?
+
+That's a pretty straightforward extension of everything that's gone above.
+First, make the other PWMs (I'll use snail and twist here) and choose
+thresholds:
+
+  >>> snail_sites = [ site.strip() for site in open('data/snail-site-list') ]
+  >>> snail_pwm = motility.make_pwm(snail_sites)
+  >>> snail_threshold = min([ snail_pwm.calc_score(x) for x in snail_sites ])
+
+  >>> twist_sites = [ site.strip() for site in open('data/twist-site-list') ]
+  >>> twist_pwm = motility.make_pwm(twist_sites)
+  >>> twist_threshold = min([ twist_pwm.calc_score(x) for x in twist_sites ])
+
+Now, do your searches & convert into maps:
+
+  >>> snail_matches = snail_pwm.find(dna, snail_threshold)
+  >>> snail_map = pygr_motif.map_matches(d_mel, d_mel['chr2L'][:1000000], snail_matches)
+
+  >>> twist_matches = twist_pwm.find(dna, twist_threshold)
+  >>> twist_map = pygr_motif.map_matches(d_mel, d_mel['chr2L'][:1000000], twist_matches)
+
+Now, do a search with a modified loop:
+
+  >>> CLUSTER_SIZE=300
+  >>> save_regions = []
+
+  >>> i = 0
+  >>> while i < len(dorsal_matches):
+  ...   start = dorsal_matches[i][0]		# start position of i'th motif
+  ...
+  ...   # account for site within 300 bp of 0
+  ...   cluster_start = max(0, start - CLUSTER_SIZE)	
+  ...
+  ...   region = d_mel['chr2L'][cluster_start:start + CLUSTER_SIZE]
+  ...
+  ...   snail_motifs = snail_map[region].keys()
+  ...   twist_motifs = twist_map[region].keys()
+  ...
+  ...   # demand *both* snail and twist motifs, in addition to the dorsal site.
+  ...   if len(snail_motifs) > 1 and len(twist_motifs) > 1:
+  ...      save_regions.append(region)
+  ...
+  ...   i += 1
+
+  >>> print len(save_regions)
+  658
+
+Note that with the above code, we could be double-counting some
+regions in certain circumstances (two dorsal sites close by, for
+example).  Putting the code to handle that in the loop is complicated,
+but we can use sequence intersections and unions to join overlapping segments:
+
+  >>> unique_regions = []
+  >>> region = save_regions[0]
+  >>> for i in range(1, len(save_regions)):
+  ...    if region * save_regions[i]:		# intersect?
+  ...       region += save_regions[i]		# join.
+  ...    else:
+  ...       unique_regions.append(region)
+  ...       region = save_regions[i]
+  >>> unique_regions.append(region)		# save last one, too.
+
+How many are left?
+
+  >>> print len(unique_regions)
+  196
+
+What do they contain, by way of dorsal, twist, and snail binding sites?
+
+  >>> for region in unique_regions[:5]:
+  ...   print repr(region), len(dorsal_map[region].keys()), \
+  ...        len(twist_map[region].keys()), len(snail_map[region].keys())
+  chr2L[9006:9606] 2 2 11
+  chr2L[18500:19100] 1 3 5
+  chr2L[21326:21926] 1 2 6
+  chr2L[33699:34299] 1 3 8
+  chr2L[51071:51671] 3 2 10
+
+Hmm, that last one looks particularly interesting... I wonder what
+gene it's near to?
+
+Finding nearby genes
+====================
+
+Here we're going to skip over some complicated setup stuff that has
+to do with installing various pygr data sources on your computer,
+and we're just going to use pygr.Data to retrieve them.
+
+First, import pygr.Data:
+
+  >>> import pygr.Data
+
+Now, retrieve the D. melanogaster genome,
+
+  >>> dmel3 = pygr.Data.Bio.insects.dmel3()
+
+and the map of all exons onto that sequence:
+
+  >>> exon_map = pygr.Data.Bio.insects.dmel3_exon_map()
+
+Extract chromosome 2L (what we've been using all along),
+
+  >>> chr2L = dmel3['chr2L']
+
+and now import a little utility I wrote called 'pygr_find' (in the
+code/ subdirectory) that ...
+
+  >>> import pygr_find
+  >>> feature = pygr_find.find_nearest_feature(exon_map, chr2L, 51071)
+  >>> print feature.name, feature.sequence.start, feature.sequence.stop
+  AY089343.exon0 50222 52366
+
+Well, that's interesting -- it's in an exon!  I wonder how many of the
+clustered regions we found overlap with coding regions?
+
+Coding overlap
+==============
+
+First, convert into "new" genome sequences...
+
+  >>> unique_regions = [ chr2L[r.start:r.stop] for r in unique_regions ]
+
+Now, assess coding overlap:
+
+  >>> coding_overlap = 0
+  >>> for region in unique_regions:
+  ...    if exon_map[region].keys():
+  ...       coding_overlap += 1
+
+  >>> print len(unique_regions), coding_overlap
+  196 76
+
+Wow!  Over a third!
+
+.. Correlating motifs with conservation
+.. ====================================
+
+.. #  >>> insect_conservation = pygr.Data.Bio.insects.multiz15way()
+.. #  >>> for region in unique_regions:
+.. #  ... 

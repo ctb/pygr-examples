@@ -1,0 +1,916 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.5: http://docutils.sourceforge.net/" />
+<title>Genome-Scale Motif Searching in Python using motility and pygr</title>
+<style type="text/css">
+
+/*
+:Author: David Goodger (goodger@python.org)
+:Id: $Id: html4css1.css 5196 2007-06-03 20:25:28Z wiemann $
+:Copyright: This stylesheet has been placed in the public domain.
+
+Default cascading style sheet for the HTML output of Docutils.
+
+See http://docutils.sf.net/docs/howto/html-stylesheets.html for how to
+customize this style sheet.
+*/
+
+/* used to remove borders from tables and images */
+.borderless, table.borderless td, table.borderless th {
+  border: 0 }
+
+table.borderless td, table.borderless th {
+  /* Override padding for "table.docutils td" with "! important".
+     The right padding separates the table cells. */
+  padding: 0 0.5em 0 0 ! important }
+
+.first {
+  /* Override more specific margin styles with "! important". */
+  margin-top: 0 ! important }
+
+.last, .with-subtitle {
+  margin-bottom: 0 ! important }
+
+.hidden {
+  display: none }
+
+a.toc-backref {
+  text-decoration: none ;
+  color: black }
+
+blockquote.epigraph {
+  margin: 2em 5em ; }
+
+dl.docutils dd {
+  margin-bottom: 0.5em }
+
+/* Uncomment (and remove this text!) to get bold-faced definition list terms
+dl.docutils dt {
+  font-weight: bold }
+*/
+
+div.abstract {
+  margin: 2em 5em }
+
+div.abstract p.topic-title {
+  font-weight: bold ;
+  text-align: center }
+
+div.admonition, div.attention, div.caution, div.danger, div.error,
+div.hint, div.important, div.note, div.tip, div.warning {
+  margin: 2em ;
+  border: medium outset ;
+  padding: 1em }
+
+div.admonition p.admonition-title, div.hint p.admonition-title,
+div.important p.admonition-title, div.note p.admonition-title,
+div.tip p.admonition-title {
+  font-weight: bold ;
+  font-family: sans-serif }
+
+div.attention p.admonition-title, div.caution p.admonition-title,
+div.danger p.admonition-title, div.error p.admonition-title,
+div.warning p.admonition-title {
+  color: red ;
+  font-weight: bold ;
+  font-family: sans-serif }
+
+/* Uncomment (and remove this text!) to get reduced vertical space in
+   compound paragraphs.
+div.compound .compound-first, div.compound .compound-middle {
+  margin-bottom: 0.5em }
+
+div.compound .compound-last, div.compound .compound-middle {
+  margin-top: 0.5em }
+*/
+
+div.dedication {
+  margin: 2em 5em ;
+  text-align: center ;
+  font-style: italic }
+
+div.dedication p.topic-title {
+  font-weight: bold ;
+  font-style: normal }
+
+div.figure {
+  margin-left: 2em ;
+  margin-right: 2em }
+
+div.footer, div.header {
+  clear: both;
+  font-size: smaller }
+
+div.line-block {
+  display: block ;
+  margin-top: 1em ;
+  margin-bottom: 1em }
+
+div.line-block div.line-block {
+  margin-top: 0 ;
+  margin-bottom: 0 ;
+  margin-left: 1.5em }
+
+div.sidebar {
+  margin: 0 0 0.5em 1em ;
+  border: medium outset ;
+  padding: 1em ;
+  background-color: #ffffee ;
+  width: 40% ;
+  float: right ;
+  clear: right }
+
+div.sidebar p.rubric {
+  font-family: sans-serif ;
+  font-size: medium }
+
+div.system-messages {
+  margin: 5em }
+
+div.system-messages h1 {
+  color: red }
+
+div.system-message {
+  border: medium outset ;
+  padding: 1em }
+
+div.system-message p.system-message-title {
+  color: red ;
+  font-weight: bold }
+
+div.topic {
+  margin: 2em }
+
+h1.section-subtitle, h2.section-subtitle, h3.section-subtitle,
+h4.section-subtitle, h5.section-subtitle, h6.section-subtitle {
+  margin-top: 0.4em }
+
+h1.title {
+  text-align: center }
+
+h2.subtitle {
+  text-align: center }
+
+hr.docutils {
+  width: 75% }
+
+img.align-left {
+  clear: left }
+
+img.align-right {
+  clear: right }
+
+ol.simple, ul.simple {
+  margin-bottom: 1em }
+
+ol.arabic {
+  list-style: decimal }
+
+ol.loweralpha {
+  list-style: lower-alpha }
+
+ol.upperalpha {
+  list-style: upper-alpha }
+
+ol.lowerroman {
+  list-style: lower-roman }
+
+ol.upperroman {
+  list-style: upper-roman }
+
+p.attribution {
+  text-align: right ;
+  margin-left: 50% }
+
+p.caption {
+  font-style: italic }
+
+p.credits {
+  font-style: italic ;
+  font-size: smaller }
+
+p.label {
+  white-space: nowrap }
+
+p.rubric {
+  font-weight: bold ;
+  font-size: larger ;
+  color: maroon ;
+  text-align: center }
+
+p.sidebar-title {
+  font-family: sans-serif ;
+  font-weight: bold ;
+  font-size: larger }
+
+p.sidebar-subtitle {
+  font-family: sans-serif ;
+  font-weight: bold }
+
+p.topic-title {
+  font-weight: bold }
+
+pre.address {
+  margin-bottom: 0 ;
+  margin-top: 0 ;
+  font-family: serif ;
+  font-size: 100% }
+
+pre.literal-block, pre.doctest-block {
+  margin-left: 2em ;
+  margin-right: 2em }
+
+span.classifier {
+  font-family: sans-serif ;
+  font-style: oblique }
+
+span.classifier-delimiter {
+  font-family: sans-serif ;
+  font-weight: bold }
+
+span.interpreted {
+  font-family: sans-serif }
+
+span.option {
+  white-space: nowrap }
+
+span.pre {
+  white-space: pre }
+
+span.problematic {
+  color: red }
+
+span.section-subtitle {
+  /* font-size relative to parent (h1..h6 element) */
+  font-size: 80% }
+
+table.citation {
+  border-left: solid 1px gray;
+  margin-left: 1px }
+
+table.docinfo {
+  margin: 2em 4em }
+
+table.docutils {
+  margin-top: 0.5em ;
+  margin-bottom: 0.5em }
+
+table.footnote {
+  border-left: solid 1px black;
+  margin-left: 1px }
+
+table.docutils td, table.docutils th,
+table.docinfo td, table.docinfo th {
+  padding-left: 0.5em ;
+  padding-right: 0.5em ;
+  vertical-align: top }
+
+table.docutils th.field-name, table.docinfo th.docinfo-name {
+  font-weight: bold ;
+  text-align: left ;
+  white-space: nowrap ;
+  padding-left: 0 }
+
+h1 tt.docutils, h2 tt.docutils, h3 tt.docutils,
+h4 tt.docutils, h5 tt.docutils, h6 tt.docutils {
+  font-size: 100% }
+
+ul.auto-toc {
+  list-style-type: none }
+
+</style>
+</head>
+<body>
+<div class="document" id="genome-scale-motif-searching-in-python-using-motility-and-pygr">
+<h1 class="title">Genome-Scale Motif Searching in Python using motility and pygr</h1>
+
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#loading-genomic-dna" id="id1">Loading genomic DNA</a></li>
+<li><a class="reference internal" href="#searching-dna-for-consensus-motifs" id="id2">Searching DNA for consensus motifs</a></li>
+<li><a class="reference internal" href="#searching-dna-with-a-weight-matrix" id="id3">Searching DNA with a weight matrix</a></li>
+<li><a class="reference internal" href="#estimating-false-positives" id="id4">Estimating false positives</a></li>
+<li><a class="reference internal" href="#looking-for-homotypic-clusters" id="id5">Looking for homotypic clusters</a></li>
+<li><a class="reference internal" href="#looking-for-heterotypic-clusters" id="id6">Looking for heterotypic clusters</a></li>
+<li><a class="reference internal" href="#finding-nearby-genes" id="id7">Finding nearby genes</a></li>
+<li><a class="reference internal" href="#coding-overlap" id="id8">Coding overlap</a></li>
+</ul>
+</div>
+<p>Aug 3, 2008.</p>
+<p>This tutorial is intended to give you a number of recipes for doing
+basic kinds of genome-scale motif searching and feature correlation in
+Python.</p>
+<p>Let's start by importing a few Python modules.</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; import sys
+&gt;&gt;&gt; sys.path.insert(0, 'code/')
+</pre>
+</blockquote>
+<p>First, motility:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; import motility
+</pre>
+</blockquote>
+<p>and second, a few pygr modules:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; from pygr import seqdb, cnestedlist
+</pre>
+</blockquote>
+<p>motility is a fast motif-searching toolkit that allows you to
+search for consensus and matrix motifs in genomic sequence.  pygr is
+a graph database package that can be used to load sequence and
+sequence annotations into a format that's nice to query.</p>
+<div class="section" id="loading-genomic-dna">
+<h1><a class="toc-backref" href="#id1">Loading genomic DNA</a></h1>
+<p>Using pygr you can load and extract segments of genomes quite nicely.
+Let's load in the Drosophila melanogaster genome:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; d_mel = seqdb.BlastDB('/scratch2/titus/dros-ucsc/fa/dm3.fa')
+</pre>
+</blockquote>
+<p>Here, <cite>dm3.fa</cite> is just a FASTA file full of the chromosomal sequences
+for Build 3 of the <em>Drosophila melanogaster</em> genome, and <cite>BlastDB</cite> gives
+us a nice dictionary interface to it.  So, for example, we can iterate
+through all of the chromosome names like so:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; for k in d_mel:
+...    print k
+chr2LHet
+chr2RHet
+chr3L
+chr3R
+chrM
+chrU
+chrUextra
+chrXHet
+chr2L
+chr2R
+chr3LHet
+chr3RHet
+chr4
+chrX
+chrYHet
+</pre>
+</blockquote>
+<p>If we want to extract DNA sequences, all we need to do is specify the
+sequence name:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; dna = d_mel['chr2L']
+&gt;&gt;&gt; len(dna)
+23011544
+</pre>
+</blockquote>
+<p>To get (for example) the first 5 megabases of this sequence, just ask
+for it as if 'dna' were a regular Python sequence:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; dna[0:5000000]
+chr2L[0:5000000]
+</pre>
+</blockquote>
+<p>If you want the actual DNA sequence, just use 'str' to turn it into a string:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; str(dna[0:50])
+'Cgacaatgcacgacagaggaagcagaacagatatttagattgcctctcat'
+</pre>
+</blockquote>
+</div>
+<div class="section" id="searching-dna-for-consensus-motifs">
+<h1><a class="toc-backref" href="#id2">Searching DNA for consensus motifs</a></h1>
+<p>Suppose you want to search genomic DNA with a dorsal-like consensus
+sequence, 'GGGWWWWCCC', where 'W' stands for 'A or T'.  (This is an
+IUPAC symbol; see the bottom of the <a class="reference external" href="http://cartwheel.caltech.edu/motility/intro.html">motility intro</a> for a short
+guide.</p>
+<p>First, extract the DNA you're interested in -- let's use the first megabase of
+<em>D. mel.</em> chr2L for a starting point:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; dna = str(dna[0:1000000])
+</pre>
+</blockquote>
+<p>Now search for matches using 'motility.find_iupac':</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; dorsal_matches = motility.find_iupac(dna, 'GGGWWWWCCC')
+</pre>
+</blockquote>
+<p><cite>dorsal_matches</cite> now contains a list of tuples, with each tuple consisting of
+four elements: the start and end of each match, the strand (+1 or -1),
+and the actual motif matched.  For example,</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; print dorsal_matches[0]
+(180553, 180563, 1, 'GGGAAAACCC')
+</pre>
+</blockquote>
+<p>This tells you that there is a match to 'GGGWWWWCCC' from position 180553
+to position 180563 on the top strand in chr2L, and that the match is
+'GGGAAAACCC'.  Let's double-check -- is that what we get when we ask
+the Drosophila genome for that sequence?</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; print d_mel['chr2L'][180553:180563]
+GGGAAAACCC
+</pre>
+</blockquote>
+<p>Note that it's also a reverse-complement match:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; print -d_mel['chr2L'][180553:180563]
+GGGTTTTCCC
+</pre>
+</blockquote>
+<p>How many matches did we get, come to think of it?</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; len(dorsal_matches)
+14
+</pre>
+</blockquote>
+<p>Well, ok, that's not bad... but GGGWWWWCCC is not a perfect motif for
+finding dorsal sites.  Many known dorsal sites don't match that exact
+motif, so what we really want to do is do a weight-matrix search for
+dorsal.  That should be more sensitive and specific.</p>
+<p>(Digression: do you all know what a position-weight matrix is and
+how it works?)</p>
+</div>
+<div class="section" id="searching-dna-with-a-weight-matrix">
+<h1><a class="toc-backref" href="#id3">Searching DNA with a weight matrix</a></h1>
+<p>To build a weight matrix, you need a list of known binding sites.  In this
+case, I've already downloaded and saved the Dorsal (Dl) binding sites
+from Dr. Papatsenko's Web site in the file 'data/dorsal-site-list'.
+This is just a straight text file full of binding sites, one to a line:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; dorsal_sites = [ line.strip() for line in open('data/dorsal-site-list') ]
+&gt;&gt;&gt; len(dorsal_sites)
+112
+&gt;&gt;&gt; dorsal_sites[0]
+'GGGATTTCCC'
+</pre>
+</blockquote>
+<p>To make this into a PWM, you can use motility's 'make_pwm' function:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; dorsal_pwm = motility.make_pwm(dorsal_sites)
+&gt;&gt;&gt; print dorsal_pwm
+[[0.0, 2.3219280948873622, 4.5235619560570131, 3.2730184944064158],
+ [0.0, 1.5849625007211561, 6.7279204545631988, 2.5849625007211561],
+ [3.5235619560570131, 1.5849625007211561, 5.4093909361377017, 0.0],
+ [3.2094533656289497, 0.0, 1.2479275134435854, 0.90689059560851826],
+ [4.0000000000000009, 0.0, 1.4150374992788444, 4.2479275134435861],
+ [3.1699250014423122, 0.0, 0.0, 6.7142455176661224],
+ [0.0, 2.8073549220576037, 2.5849625007211552, 6.6724253419714952],
+ [0.0, 6.0443941193584534, 1.5849625007211561, 5.5235619560570131],
+ [0.0, 6.8201789624151887, 0.0, 0.0],
+ [0.0, 4.8579809951275728, 2.4150374992788444, 1.7369655941662066]]
+</pre>
+</blockquote>
+<p>There are a variety of ways to make a PWM, and you can read more about
+<cite>make_pwm</cite> in the <a class="reference external" href="http://cartwheel.caltech.edu/motility/python-tutorial.html">motility tutorial</a>.  By
+default, <cite>make_pwm</cite> calculates the log of the frequency of each
+nucleotide's occurrence, which is why we have all the ugly numbers above.</p>
+<p>Now, PWMs assign a score to any N-mer (in this case, 10-mer), if you
+want to pick out specific sites, you need to choose a threshold below
+which scores are too low to count.  There are a variety of ways of
+doing this, and I'll leave you to figure out what makes sense to you.
+I personally like to look at the scores of known sites; let's do that
+by building a score for each of the input sites.</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; scores = [ dorsal_pwm.calc_score(site) for site in dorsal_sites ]
+&gt;&gt;&gt; print 'min =', min(scores), '; max =', max(scores)
+min = 45.059492414 ; max = 55.2274791624
+</pre>
+</blockquote>
+<p>This tells us that using this PWM, built from the list of input sites,
+the lowest score among those sites is 45.06, and the highest score is
+55.23.  That low score is probably a good choice for a starting threshold;
+let's see what happens when we search the first mb of chr2L in
+<em>D. melanogaster.</em></p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; threshold = min(scores)
+&gt;&gt;&gt; dorsal_matches = dorsal_pwm.find(dna, threshold)
+&gt;&gt;&gt; len(dorsal_matches)
+5039
+</pre>
+</blockquote>
+<p>Whaah!  That's a lot of sites!  Why are there so many more PWM matches
+in there than there are motif matches to 'GGGWWWWCCC'?!</p>
+<p>Well, first, it turns out that the consensus for dorsal based on
+those input sites is <em>much</em> looser than 'GGGWWWWCCC':</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; print motility.make_iupac_motif(dorsal_sites)
+NBNNNWBBCN
+</pre>
+</blockquote>
+<p>and if you search with <em>that</em> you find a lot more sites than with the PWM:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; len(motility.find_iupac(dna, 'NBNNNWBBCN'))
+104611
+</pre>
+</blockquote>
+<p>Before we discuss these results more, let's look at what happens if we
+choose a tighter threshold for the PWM; let's try taking the midpoint
+between the high and the low scores from the input sites:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; dorsal_matches = dorsal_pwm.find(dna, 50)
+&gt;&gt;&gt; print len(dorsal_matches)
+388
+</pre>
+</blockquote>
+<p>Hmm, 10 times fewer than with a threshold of 45!</p>
+<p>So what's going on here?</p>
+<p>First, let's think about probabilities.  Assuming AT/GC content of
+50/50, a 10 base matrix is going to match randomly at least once in a
+megabase -- that's based on the calculating that a 10-base exact
+sequences matches once in a million random sequences.  However, a PWM
+is supposed to allow fuzzy matching, and for that you've got to drop
+the threshold; since the number of random matches scales exponentially
+up as the threshold stringency decreases, you actually get far more
+matches than the strict case would predict.  That's why you get so many
+more matches (5039) with a threshold of 45 than with a threshold of
+50 (388).</p>
+<p>Second, IUPAC consensus motifs are <em>guaranteed</em> to match at least
+as many motifs as a PWM built from the same site list, if the PWM
+score is chose as the lowest score among the input sites.  This is
+because PWMs are more discriminating than IUPAC motifs, because
+they assign weighted scores to each nucleotide in each position.  In turn,
+this explains why you get many more matches (104611) with the IUPAC
+consensus motif than with the PWM at a threshold of 45 (5039).</p>
+<p>Third, thinking biologically, you should be extremely unhappy with
+<em>all</em> of these results!  While there's only 388 matches in the first
+megabase with a threshold of 50, the Drosophila genome is
+approximately 180 mb in size. You would expect roughly 70,000 matches
+in the entire genome, which seems biologically implausible -- and
+that's if you choose a threshold that intentionally omits more than
+half of the known Dorsal sites!</p>
+<p>All in all, this is why motif searching is so frustrating.  PWMs have
+a <em>very</em> high false positive rate, and you simply can't take a predicted
+site at face value.  If someone hands you a bunch of 10 base sites and tells
+you that you can use these sites to build a PWM and predict binding sites
+on a genomic scale, <em>be skeptical</em> :).</p>
+</div>
+<div class="section" id="estimating-false-positives">
+<h1><a class="toc-backref" href="#id4">Estimating false positives</a></h1>
+<p>Let's briefly digress and talk about the problem of false positives.
+How can you estimate PWM false positive rates for a given threshold?</p>
+<p>Well, motility has a very simple routine, 'weight_sites_over', that
+can help you do this.  Let's try it out:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; p1 = dorsal_pwm.weight_sites_over(45)
+&gt;&gt;&gt; p2 = dorsal_pwm.weight_sites_over(50)
+&gt;&gt;&gt; p3 = dorsal_pwm.weight_sites_over(55)
+&gt;&gt;&gt; print '%g, %g, %g' % (p1, p2, p3)
+0.00210381, 0.000130653, 9.53674e-07
+</pre>
+</blockquote>
+<p>Basically what this function does is to calculate the number of
+matches you'd expect at random with that threshold, in an infite-sized
+genome with a 50/50 AT/GC content, represented as a probability per
+base.  (You can modify the AT/GC content if you like; see the motility
+docs.)</p>
+<p>So, for example, in a mb of sequence, you'd expect the following
+number of random matches with a threshold of 45, 50, and 55:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; e1 = p1 * 1000000
+&gt;&gt;&gt; e2 = p2 * 1000000
+&gt;&gt;&gt; e3 = p3 * 1000000
+&gt;&gt;&gt; print '%g, %g, %g' % (e1, e2, e3)
+2103.81, 130.653, 0.953674
+</pre>
+</blockquote>
+<p>Comparing that to the actual numbers for the thresholds of 45 and 50,
+calculated above to be 5039 and 388 matches, that's pretty good -- it
+implies that this PWM is picking up more sites than you would predict
+you'd find at random.</p>
+</div>
+<div class="section" id="looking-for-homotypic-clusters">
+<h1><a class="toc-backref" href="#id5">Looking for homotypic clusters</a></h1>
+<p>Now, suppose you know that Dorsal multimerizes, so you'd expect to see
+multiple binding sites close to each other (incidentally, it does :).
+What is a good way to search for multiple sites in close proximity?</p>
+<p>This is where we can start to leverage pygr a bit more.  Let's run through
+an example first, and then I'll explain what's going on.</p>
+<p>Start by running the search with the lowest threshold of 45, again:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; threshold = min(scores)
+&gt;&gt;&gt; dorsal_matches = dorsal_pwm.find(dna, threshold)
+&gt;&gt;&gt; len(dorsal_matches)
+5039
+</pre>
+</blockquote>
+<p>Now, let's use a little routine I wrote to map these onto the Drosophila
+melanogaster genome in a way that lets us retrieve them by proximity:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; import pygr_motif
+&gt;&gt;&gt; dorsal_map = pygr_motif.map_matches(d_mel, d_mel['chr2L'][:1000000], dorsal_matches)
+</pre>
+</blockquote>
+<p>(Note that we need to tell <cite>pygr_motif</cite> what sequences these came from --
+in this case, 'chr2L', starting from position 0.  If these matches actually
+came from another part of the genome, or start at a position other than 0,
+we need to adjust the sequence slice we give to <cite>map_matches</cite> accordingly.)</p>
+<p>Now, what 'dorsal_map' gives us is the ability to pull out motif
+matches by sequence position.  Remember that section above where
+d_mel['chr2L'][180553:180563] was a good match to a Dorsal consensus
+site?  Let's see how many sites that region contains:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; sites = dorsal_map[d_mel['chr2L'][180553:180563]].keys()
+&gt;&gt;&gt; len(sites)
+2
+</pre>
+</blockquote>
+<p>Ah-hah!  That's right, there are two sites there!  What are they?</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; for site in sites:
+...    print site.sequence
+GGGAAAACCC
+GGAAAACCC
+</pre>
+</blockquote>
+<p>OK, that's a bit strange -- why is one site only 9 bp?  It turns out
+that pygr will return parts of any <em>overlapping</em> sites, too.  To change
+this behavior you need to tell 'keys()', above, to return only full-length
+matches, like so:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; sites = dorsal_map[d_mel['chr2L'][180553:180563]].keys(minAlignSize=10)
+&gt;&gt;&gt; len(sites)
+1
+</pre>
+</blockquote>
+<p>(You can see the other magic incantations that affect the behavior of
+'keys' in the <a class="reference external" href="http://bioinfo.mbi.ucla.edu/pygr_0_7_b3/sqlgraph-module.html#SECTION000237000000000000000">pygr documentation</a>.)</p>
+<p>OK, apart from that digression, at least we can get back what we put in.
+How many sites are there in the 1 kb region centered on that site, though?</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; region = d_mel['chr2L'][180053:181063]
+&gt;&gt;&gt; sites = dorsal_map[region].keys()
+&gt;&gt;&gt; print len(sites)
+3
+</pre>
+</blockquote>
+<p>Three sites!  OK, where are they?</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; for k in sites:
+...   print k.sequence.start, k.sequence.stop
+180257 180267
+180553 180563
+180554 180564
+</pre>
+</blockquote>
+<p>I will leave the significance calculation up to you (hint: not
+very!). The point is that we can use this to build a general
+cluster-finding algorithm, though.  How?  Well, since we can retrieve
+sites by proximity, we could just iterate over the whole segment
+looking for 1kb chunks of DNA that contain more than one site.  We could
+also iterate over the <em>motifs</em>, and only start searching in a place
+where there's already a motif.  To do that, we'll have to order the
+motifs, though:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; dorsal_matches = list(dorsal_matches)
+&gt;&gt;&gt; dorsal_matches.sort()                     # sort by start position
+</pre>
+</blockquote>
+<p>OK, now let's iterate over the matches, and save regions that have
+two or more motifs in them:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; CLUSTER_SIZE=300
+&gt;&gt;&gt; save_regions = []
+</pre>
+<pre class="doctest-block">
+&gt;&gt;&gt; i = 0
+&gt;&gt;&gt; while i &lt; len(dorsal_matches):
+...   start = dorsal_matches[i][0]    # start position of i'th motif
+...
+...   region = d_mel['chr2L'][start:start + CLUSTER_SIZE]
+...   motifs = dorsal_map[region].keys()
+...
+...   if len(motifs) &gt; 1:             # more than one motif? save.
+...      save_regions.append(region)
+...
+...   i += len(motifs)                # skip forward 1 or more motifs.
+</pre>
+<pre class="doctest-block">
+&gt;&gt;&gt; print len(save_regions)
+1304
+</pre>
+</blockquote>
+<p>We can look at a few of these regions to see how many sites there are in each
+region:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; for region in save_regions[:5]:
+...   print repr(region), len(dorsal_map[region].keys())
+chr2L[298:598] 2
+chr2L[756:1056] 2
+chr2L[1214:1514] 2
+chr2L[1672:1972] 2
+chr2L[2130:2430] 2
+</pre>
+</blockquote>
+<p>At this point we could do all sorts of fun things like calculate the
+likelihood of seeing each cluster, or look at the distribution of
+spacing between the sites, or look at their association with genes.
+(We'll do this last one later on.)</p>
+</div>
+<div class="section" id="looking-for-heterotypic-clusters">
+<h1><a class="toc-backref" href="#id6">Looking for heterotypic clusters</a></h1>
+<p>Suppose we know that our transcription factor interacts with other
+transcription factors, and we want to look for binding sites for
+multiple transcription factors?</p>
+<p>That's a pretty straightforward extension of everything that's gone above.
+First, make the other PWMs (I'll use snail and twist here) and choose
+thresholds:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; snail_sites = [ site.strip() for site in open('data/snail-site-list') ]
+&gt;&gt;&gt; snail_pwm = motility.make_pwm(snail_sites)
+&gt;&gt;&gt; snail_threshold = min([ snail_pwm.calc_score(x) for x in snail_sites ])
+</pre>
+<pre class="doctest-block">
+&gt;&gt;&gt; twist_sites = [ site.strip() for site in open('data/twist-site-list') ]
+&gt;&gt;&gt; twist_pwm = motility.make_pwm(twist_sites)
+&gt;&gt;&gt; twist_threshold = min([ twist_pwm.calc_score(x) for x in twist_sites ])
+</pre>
+</blockquote>
+<p>Now, do your searches &amp; convert into maps:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; snail_matches = snail_pwm.find(dna, snail_threshold)
+&gt;&gt;&gt; snail_map = pygr_motif.map_matches(d_mel, d_mel['chr2L'][:1000000], snail_matches)
+</pre>
+<pre class="doctest-block">
+&gt;&gt;&gt; twist_matches = twist_pwm.find(dna, twist_threshold)
+&gt;&gt;&gt; twist_map = pygr_motif.map_matches(d_mel, d_mel['chr2L'][:1000000], twist_matches)
+</pre>
+</blockquote>
+<p>Now, do a search with a modified loop:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; CLUSTER_SIZE=300
+&gt;&gt;&gt; save_regions = []
+</pre>
+<pre class="doctest-block">
+&gt;&gt;&gt; i = 0
+&gt;&gt;&gt; while i &lt; len(dorsal_matches):
+...   start = dorsal_matches[i][0]            # start position of i'th motif
+...
+...   # account for site within 300 bp of 0
+...   cluster_start = max(0, start - CLUSTER_SIZE)
+...
+...   region = d_mel['chr2L'][cluster_start:start + CLUSTER_SIZE]
+...
+...   snail_motifs = snail_map[region].keys()
+...   twist_motifs = twist_map[region].keys()
+...
+...   # demand *both* snail and twist motifs, in addition to the dorsal site.
+...   if len(snail_motifs) &gt; 1 and len(twist_motifs) &gt; 1:
+...      save_regions.append(region)
+...
+...   i += 1
+</pre>
+<pre class="doctest-block">
+&gt;&gt;&gt; print len(save_regions)
+658
+</pre>
+</blockquote>
+<p>Note that with the above code, we could be double-counting some
+regions in certain circumstances (two dorsal sites close by, for
+example).  Putting the code to handle that in the loop is complicated,
+but we can use sequence intersections and unions to join overlapping segments:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; unique_regions = []
+&gt;&gt;&gt; region = save_regions[0]
+&gt;&gt;&gt; for i in range(1, len(save_regions)):
+...    if region * save_regions[i]:           # intersect?
+...       region += save_regions[i]           # join.
+...    else:
+...       unique_regions.append(region)
+...       region = save_regions[i]
+&gt;&gt;&gt; unique_regions.append(region)             # save last one, too.
+</pre>
+</blockquote>
+<p>How many are left?</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; print len(unique_regions)
+196
+</pre>
+</blockquote>
+<p>What do they contain, by way of dorsal, twist, and snail binding sites?</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; for region in unique_regions[:5]:
+...   print repr(region), len(dorsal_map[region].keys()), \
+...        len(twist_map[region].keys()), len(snail_map[region].keys())
+chr2L[9006:9606] 2 2 11
+chr2L[18500:19100] 1 3 5
+chr2L[21326:21926] 1 2 6
+chr2L[33699:34299] 1 3 8
+chr2L[51071:51671] 3 2 10
+</pre>
+</blockquote>
+<p>Hmm, that last one looks particularly interesting... I wonder what
+gene it's near to?</p>
+</div>
+<div class="section" id="finding-nearby-genes">
+<h1><a class="toc-backref" href="#id7">Finding nearby genes</a></h1>
+<p>Here we're going to skip over some complicated setup stuff that has
+to do with installing various pygr data sources on your computer,
+and we're just going to use pygr.Data to retrieve them.</p>
+<p>First, import pygr.Data:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; import pygr.Data
+</pre>
+</blockquote>
+<p>Now, retrieve the D. melanogaster genome,</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; dmel3 = pygr.Data.Bio.insects.dmel3()
+</pre>
+</blockquote>
+<p>and the map of all exons onto that sequence:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; exon_map = pygr.Data.Bio.insects.dmel3_exon_map()
+</pre>
+</blockquote>
+<p>Extract chromosome 2L (what we've been using all along),</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; chr2L = dmel3['chr2L']
+</pre>
+</blockquote>
+<p>and now import a little utility I wrote called 'pygr_find' (in the
+code/ subdirectory) that ...</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; import pygr_find
+&gt;&gt;&gt; feature = pygr_find.find_nearest_feature(exon_map, chr2L, 51071)
+&gt;&gt;&gt; print feature.name, feature.sequence.start, feature.sequence.stop
+AY089343.exon0 50222 52366
+</pre>
+</blockquote>
+<p>Well, that's interesting -- it's in an exon!  I wonder how many of the
+clustered regions we found overlap with coding regions?</p>
+</div>
+<div class="section" id="coding-overlap">
+<h1><a class="toc-backref" href="#id8">Coding overlap</a></h1>
+<p>First, convert into &quot;new&quot; genome sequences...</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; unique_regions = [ chr2L[r.start:r.stop] for r in unique_regions ]
+</pre>
+</blockquote>
+<p>Now, assess coding overlap:</p>
+<blockquote>
+<pre class="doctest-block">
+&gt;&gt;&gt; coding_overlap = 0
+&gt;&gt;&gt; for region in unique_regions:
+...    if exon_map[region].keys():
+...       coding_overlap += 1
+</pre>
+<pre class="doctest-block">
+&gt;&gt;&gt; print len(unique_regions), coding_overlap
+196 76
+</pre>
+</blockquote>
+<p>Wow!  Over a third!</p>
+<!-- Correlating motifs with conservation -->
+<!-- ==================================== -->
+<!-- #  >>> insect_conservation = pygr.Data.Bio.insects.multiz15way() -->
+<!-- #  >>> for region in unique_regions: -->
+<!-- #  ... -->
+</div>
+</div>
+</body>
+</html>
