@@ -1,0 +1,305 @@
+==============================================
+Playing with pygr and Saccharomyces cerevisiae
+==============================================
+
+Loading sequences and annotating them
+=====================================
+
+First, download the `yeast genome from UCSC
+<http://hgdownload.cse.ucsc.edu/goldenPath/sacCer1/bigZips/>`__ and
+put all the chromosomes from `chromFa.zip` into the
+'sacCer1' file; this file should now be a single FASTA-format file,
+with the names 'chr1', 'chr2', and so on.
+
+Load this into Python as a pygr BlastDB:
+
+ >>> from pygr import seqdb
+ >>> yeast = seqdb.BlastDB('sacCer1')
+
+Now let's grab the gene annotations from UCSC, also; in this case
+we'll use the `sgdGene.txt.gz` file from `this directory
+<http://hgdownload.cse.ucsc.edu/goldenPath/sacCer1/database/>`__.
+Each line in this file contains information about an annotated yeast gene,
+and the information is in the following format:
+
+ - the gene name is the first item;
+ - the chromosome name is the second item;
+ - the strand (+/-) is the third item;
+ - the start and stop are the fourth and fifth items.
+
+So, first, let's define a Python class to hold this information:
+
+ >>> class YeastGene:
+ ...    def __init__(self, name, id, start, stop, strand):
+ ...        self.name = name
+ ...        self.id = id
+ ...
+ ...        if strand == -1:
+ ...            self.start = -stop
+ ...            self.stop = -start
+ ...        else:
+ ...            self.start = start
+ ...            self.stop = stop
+ ...            
+ ...        self.strand = strand
+
+The only mildly tricky bit here is that 'if strand == -1' statement.
+You see, pygr keeps track of the sequence strand by using reversing
+and negating feature coordinates, so the sequence interval ::
+
+   (500, 650)
+
+would be written as ::
+
+   (-650, -500)
+
+if it were on the reverse strand.  
+
+OK, we've got a class to hold the information; now let's load the annotations
+from the `sgdGene.txt` file and put them in a list:
+
+ >>> gene_annots = {}
+ >>> for line in open('sgdGene.txt'):
+ ...    info = line.split()
+ ...
+ ...    name = info[0]
+ ...    seq = info[1]
+ ...    if info[2] == '+':
+ ...        strand = +1
+ ...    else:
+ ...        strand = -1
+ ...    start = int(info[3])
+ ...    stop = int(info[4])
+ ...    
+ ...    span = YeastGene(name, seq, start, stop, strand)
+ ...    gene_annots[name] = span
+
+We can now retrieve `YeastGene` objects by their name; for example,
+
+ >>> gene_info = gene_annots['YAL062W']
+ >>> print gene_info.name, gene_info.start, gene_info.stop
+ YAL062W 31567 32941
+
+Now let's load these annotations into pygr!
+
+First, create a pygr `AnnotationDB`.
+
+ >>> annot_db = seqdb.AnnotationDB(gene_annots, yeast)
+
+This is a dict-like structure that connects the annotations we've just
+loaded to the actual sequence of the yeast genome.  For example, we
+can retrieve an object from the database:
+
+ >>> annot = annot_db['YAL062W']
+ >>> annot
+ annotYAL062W[0:1374]
+
+but now it's been renamed and converted into an interval.  We can request
+the actual sequence corresponding to this annotation:
+
+ >>> annot.sequence
+ chr1[31567:32941]
+
+and even neater we can get subsequences:
+
+ >>> first_codon = annot[:3]
+ >>> first_codon.sequence
+ chr1[31567:31570]
+ >>> print first_codon.sequence
+ ATG
+
+Rather than stopping here, let's go one further and build a
+reverse mapping:
+
+ >>> from pygr import cnestedlist
+ >>> annot_map = cnestedlist.NLMSA('genes', mode='memory', use_virtual_lpo=True)
+
+ >>> for v in annot_db.values():
+ ...   annot_map.addAnnotation(v)
+ >>> annot_map.build()
+
+Briefly, this makes an in-memory reverse mapping that can be used to
+figure out what annotations overlap sequence intervals on the genome.
+For example, we see above that the YAL062W gene is on chr1,
+running from position 31567 to 31570.  Let's retrieve it by those positions:
+
+ >>> query_sequence = yeast['chr1'][31567:31570]
+
+Here there's no information up our sleeve: we're going to casually ask
+for that sequence interval, with no a priori knowledge that it's
+actually a gene.  What's the result?
+
+ >>> annotations = annot_map[query_sequence]
+ >>> print len(annotations)
+ 1
+
+Well, we only get one annotation overlapping that position, and if we look
+at it more closely:
+
+ >>> annotation = annotations.keys()[0]
+ >>> print annotation.name
+ YAL062W
+
+we can see that it is, indeed, our old friend YAL062W!
+
+Let's put this stuff to some practical use.
+
+Using pygr annotations to get upstream regions
+==============================================
+
+Let's suppose that we are interested in the 500 bases immediately
+upstream of every gene in yeast.  Basically we want to iterate over
+all of the genes annotated in `annot_db` and grab the 500 bp
+immediately 5' of the annotation:
+
+ >>> upstream_regions = []
+ >>> for annot in annot_db.values():
+ ...    upstream = annot.sequence.before()
+ ...    upstream = upstream[-500:]
+ ...    upstream_regions.append(upstream)
+
+Note one nice convenience here: because the annotations are oriented
+with respect to strand, we can just ask for the sequence 'before()' the
+annotated sequence and it will return the correct 5' sequence.
+
+At this point, you could easily do your standard binding site search
+or UTR analysis on these regions, and I will indeed demonstrate
+binding site search below -- but first, let's consider a pygrish
+alternative.
+
+You see, one problem with naively taking the 500 bp immediately
+upstream of the gene and searching for motifs is that you may end up
+*double-counting* matches because of overlapping upstream regions.
+For example, this pseudocode ::
+
+ n_matching_regions = 0
+ for region in upstream_regions:
+    if find(region, motif):
+       n_matching_regions += 1
+
+may overcount matching regions when they overlap, for example if two
+genes are transcribed divergently and located less than 1 kb apart (2
+x 500 bp).  This is just one example of a problem -- in general there
+are a number of ways you can get into trouble by doing things this way.
+
+Is there a better way?
+
+Of course!  What I'll show you how to do is convert all of these
+upstream regions into their own pygr annotations on the yeast genome,
+following which any interesting motif can be queried to find out
+which upstream regions it is in.
+
+So, let's start by running through the upstream regions again, but this
+time let's make these regions into annotations in their own right:
+
+ >>> class UpstreamRegion:
+ ...    def __init__(self, gene_name, seq):
+ ...       self.gene_name = gene_name
+ ...       self.id = seq.id
+ ...       self.start = seq.start
+ ...       self.stop = seq.stop
+ ...       self.orientation = seq.orientation
+
+and building the annotation dictionary:
+
+ >>> upstream_regions = {}
+ >>> for annot in annot_db.values()[:1000]:
+ ...    upstream = annot.sequence.before()[-500:]
+ ...    new_annot = UpstreamRegion(annot.name, upstream)
+ ...    upstream_regions[new_annot.gene_name] = new_annot
+
+Now do the conversion dance necessary to reverse map these regions onto
+the genome:
+
+ >>> upstream_db = seqdb.AnnotationDB(upstream_regions, yeast)
+ >>> upstream_map = cnestedlist.NLMSA('upstream', mode='memory', use_virtual_lpo=True)
+
+ >>> for v in upstream_db.values():
+ ...   upstream_map.addAnnotation(v)
+ >>> upstream_map.build()
+
+All right, we've done the boilerplate stuff -- what can we do with this?
+
+Well, first, let's start by double-checking that this all works.  (Always
+a good idea...)  I happen to know two upstream regions that overlap:
+the two regions upstream of the YBR133C and YBR135W genes.  Let's use one
+region to pull out the other by asking for overlaps:
+
+ >>> ybr133c = upstream_db['YBR133C'].sequence
+ >>> overlaps = upstream_map[ybr133c]
+ >>> for annotation in overlaps.keys():
+ ...    print annotation.gene_name
+ YBR135W
+ YBR133C
+
+Great!  So that worked!
+
+Now let's count all of the regions with overlaps:
+
+ >>> n = 0
+ >>> for v in upstream_db.values():
+ ...   overlap = upstream_map[v.sequence]
+ ...   if len(overlap) > 1:
+ ...     n += 1
+ >>> print n
+ 56
+
+Great -- we can see that there are 56 total 500bp upstream regions that
+overlap, so this double-counting thing may actually be a problem!
+
+Motif searching in upstream regions
+===================================
+
+Let's do something useful next to demonstrate the power of all of
+this: let's do a motif search for 'GCANTGC' (a randomly chosen motif)
+on the whole of chromosome 1 with motility.
+
+ >>> import motility
+ >>> chr1 = str(yeast['chr1'])    # convert chr1 into a string.
+ >>> matches = motility.find_iupac(chr1, 'GCANTGC')
+ >>> print len(matches)
+ 43
+
+OK, so we get 43 matches to 'GCANTGC'.  How many of them fall within
+500 bp of the 5' end of a yeast gene?
+
+ >>> overlaps = []
+ >>> for (start, stop, _, _) in matches:
+ ...   match = yeast['chr1'][start:stop]
+ ...   upstream_hits = upstream_map[match]
+ ...   if len(upstream_hits):
+ ...     overlaps.append(upstream_hits)
+
+ >>> print len(overlaps)
+ 1
+
+Precisely one!  Which gene(s) is it near?
+
+ >>> overlapping = overlaps[0].keys()
+ >>> for upstream_annot in overlapping:
+ ...   print upstream_annot.gene_name
+ YAR015W
+
+...and there we go.
+
+Conclusions
+===========
+
+I'm not really sure how to conclude this strongly, but here are a few
+thoughts on how useful all of this is.
+
+First, with pygr, you can load in and retrieve slices from genomes
+quickly and easily.
+
+Second, you can define annotations containing information of your own
+design and link them to that sequence.
+
+Finally, you can reverse-map sequence onto annotations in order to
+figure out which features of interest overlap with other features of
+interest.
+
+.. ## NOTES: annot_map unbuilt gives weird results ???
+   ##        cannot get 'annotations[0]'!?
+   ## get next feature, previous feature
+   ## annodb len non existent
+   ## check file mod times for e.g. seqdb (compare .pyc)

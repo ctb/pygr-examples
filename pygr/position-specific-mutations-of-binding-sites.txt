@@ -1,0 +1,360 @@
+==================================================================
+Using pygr to study orthologous binding sites in bacterial genomes
+==================================================================
+
+:Authors: C Titus Brown, titus@caltech.edu;
+
+A while ago, Dr. Callan and I wrote a PNAS paper entitled
+`Evolutionary comparisons suggest many novel cAMP response protein
+binding sites in Escherichia coli
+<http://www.pnas.org/cgi/content/abstract/101/8/2404>`__. The basic
+idea behind this work was that you can use conservation in predicted
+*binding strength* to validate predicted binding sites.
+
+We did the following analysis in this paper:
+
+ - Extract all intergenic regions shared between E. coli and
+   Salmonella and align them using CLUSTAL W.
+
+ - Scan the E. coli genome with a position-weight matrix and
+   pick out all binding sites in intergenic regions.
+
+ - Examine the independently aligned binding sites in Salmonella and
+   determine whether or not they are also valid binding sites.
+
+(For details as to why we think this works well, you can read the paper!)
+
+In order to do this analysis, I hacked together a bunch of Python
+scripts; you're welcome to download them `here <http://www.princeton.edu/~ccallan/binding/software.html>`__ if you want to
+take a look at them.  I don't think they're particularly pretty
+(but I'm pretty sure they work!)
+
+In this tutorial, I'm going to reimplement the crux of this analysis
+code in about 50 lines of code, using `pygr
+<http://bioinfo.mbi.ucla.edu/pygr>`__.  I think this reimplemented
+analysis is *much* simpler to understand, and therefore much more
+likely to be correct; it also has the benefit that you can use it
+with different kinds of alignments!
+
+You can download the entire set of code `here <bogs+pygr.tar.gz>`__.
+
+Thinking about the problem
+==========================
+
+Now, I usually just start hacking on code and then hit it until it works,
+but some reflection up front might help you understand the process implemented
+below.
+
+Our *goal* is to be able to ask a fairly simple question:
+
+   Does this binding site lie in an intergenic region of E. coli, and,
+   if so, what is the aligned sequence in Salmonella?
+
+There are a couple of ways to imagine doing this, but since I already
+know that generating the alignments is the slow part, I'm going to do
+that up front.  So, I'll pick out all of the intergenic regions that
+are in common between E. coli and Salmonella, then align them, and
+finally save the resulting alignments in a convenient pygr structure
+known as an NLMSA.  This last structure is one of the real strengths of
+pygr: it will let us do the query above in only a few lines of code.
+
+Getting started: loading in the genomes and annotations
+=======================================================
+
+Assume I've already downloaded the relevant genomes and annotation
+files from NCBI (they're in the `data/` subdirectory). The following
+code makes the genomes accessible to pygr: ::
+
+   bothdb = pygr.seqdb.BlastDB('data/both.fna')
+
+   ecoli_genome = bothdb['ecoliK12']
+   salm_genome = bothdb['salmLT2']
+
+To load in NCBI's PTT annotation files for bacterial genomes, I'm going to
+use some utility functions I wrote some time ago.  They're not pretty
+but they work :). ::
+
+   ecoli_info = cogs2.CogsFileContent('data/NC_000913.ptt', len(ecoli_genome))
+   salm_info = cogs2.CogsFileContent('data/NC_003197.ptt', len(salm_genome))
+
+With the resulting data, I can easily pick out all the intergenic regions: ::
+
+    def get_intergenic_intervals(ptt_info):
+        """
+	Extract all intergenic intervals with named genes on both side.
+	"""
+        intergenic = cogs2.IntergenicRegionsByFootprint(ptt_info)
+
+        interval_dict = {}
+        for (start, end, name) in intergenic:
+            if '-' in name:
+                continue
+
+            key = tuple(name)
+            if end - start > 0:
+                interval_dict[key] = (start, end)
+
+        return interval_dict
+
+...and I can use this function to build a dictionary of the intergenic
+regions from each genome and then find the intervals that are in
+common: ::
+
+       ecoli_dict = get_intergenic_intervals(ecoli_info)
+       salm_dict = get_intergenic_intervals(salm_info)
+
+       common_keys = set(ecoli_dict.keys())
+       common_keys.intersection_update(salm_dict.keys())
+
+OK, now I've got the intervals.  What next?
+
+Building CLUSTAL W alignments of the intergenic regions
+=======================================================
+
+The next step is to look at the code for building CLUSTAL W alignments.
+The following code iterates over all of the common intergenic regions and
+builds a simple pairwise alignment between them: ::
+
+    for n, key in enumerate(common_keys):
+        if n % 100 == 0:
+            print '...', n
+
+        # find coords
+        ecoli_start, ecoli_stop = ecoli_dict[key]
+        salm_start, salm_stop = salm_dict[key]
+
+        # extract intervals
+        ecoli_ival = ecoli_genome[ecoli_start:ecoli_stop]
+        salm_ival = salm_genome[salm_start:salm_stop]
+
+        # run clustalw
+        a, b = run_pair_clustalw(ecoli_ival, salm_ival)
+
+So, obviously there's some code in the 'run_pair_clustalw' function,
+but that's the boring stuff that runs CLUSTALW and parses the results.
+You can look at that in the distribution if you want -- but beware of
+reusing it, 'cause it's pretty ugly code at the moment...
+
+I contend that generating the alignments is pretty boring; what we
+really want to do now is store the alignments in an interesting
+manner.  Onwards!
+
+Saving the alignments in an NLMSA
+=================================
+
+We need to do two things to store the alignments in an NLMSA object:
+first, create the NLMSA, and second, add the CLUSTALW alignments to
+it.  Let's do that in reverse order...
+
+Our CLUSTALW results are returned in a gapped alignment format, like so: ::
+
+   TACTGGAAACAGGCT-----------------------GGAATAA---TCTTAGCCGG
+   TACTGAAGGAAGGCTCTACGCTGAATTTGCCGGATGGCGGCGTAAACGCCTTATCCAG
+
+and what we want to do is break this down into a set of ungapped intervals: ::
+
+   0-15, 15-22, 22-32
+   0-15, 38-45, 48-58
+
+that map the original sequence coordinates on the top sequence onto the
+original sequence coordinates on the bottom sequence.  This is a not
+so tough little algorithm, implemented in the ``clustalw_utils.py`` file
+as ``build_interval_list``: ::
+
+        interval_list = build_interval_list(a, b)
+
+Now, to add these intervals into the alignment object (which we've yet
+to construct) all we need to do use the standard Python dict and +
+operators: ::
+
+        # save!
+        for (a, b, x, y) in interval_list:
+            ec = ecoli_ival[a:b]
+            sa = salm_ival[x:y]
+
+            alignment[ec] += sa
+
+This literally says "the interval ``ec`` is aligned to the interval ``sa``;
+store that."
+
+Now, the ``alignment`` object here has not actually been constructed: it can
+actually be one of several different things, and in this case we want to
+make it an on-disk NLMSA.  The magic syntax for that is: ::
+
+   from pygr import cnestedlist
+   alignment = cnestedlist.NLMSA('pairbac', mode='w', seqDict=bothdb,
+                                 use_virtual_lpo=True)
+
+   alignment += ecoli_genome
+
+Briefly, this opens an on-disk NLMSA with the name 'pairbac', tells it
+to open in *write* mode, using the genomes we loaded in before as a
+source of sequences, and (with a cryptic keyword argument) to make it
+a simple pairwise alignment.  The last line tells the alignment that
+its source sequences will be from the ecoli genome stored in seqDict.
+
+So: create the alignment object, add the aligned subintervals into it,
+and then: ::
+
+   alignment.build(saveSeqDict=True)
+
+This builds the alignment indices (so that we can query it speedily) and
+saves it to disk, in this case telling it to save the sequence dictionary
+along with it.
+
+Now we're done building the alignment -- what can we do with it?  Query it,
+of course!
+
+Querying the alignments
+=======================
+
+To *query* the alignment, we just need to ask it a question in the right
+way.  For example, we can ask the NLMSA for the block aligned to 'GGAATAA'
+in the alignment below: ::
+
+   TACTGGAAACAGGCT-----------------------GGAATAA---TCTTAGCCGG
+   TACTGAAGGAAGGCTCTACGCTGAATTTGCCGGATGGCGGCGTAAACGCCTTATCCAG
+
+Now, the top sequence is index 4225614-4225646 in the E. coli genome;
+we can reference it like so: ``ecoli_genome[4225614:4225646]``.  The
+'GGAATAA' subsequence is the subslice 15-22, so we can just say: ::
+
+  >>> region = ecoli_genome[4225614:4225646]
+  >>> interval = region[15:22]
+
+in standard Python notation.  If you want to check to make sure we got
+it right, just look at ``str(interval)``: ::
+
+  >>> print str(interval)
+  GGAATAA
+
+Yep, it's right!  OK, so how can we query this?  Just ask! ::
+
+  aligned_stuff = alignment[interval]
+  key = aligned_stuff.keys()[0]
+
+Here we're taking advantage of the fact that we only aligned at most
+one set of Salmonella sequences to each E. coli region, so we can ask
+for only the first key and be sure that we're going to get any
+relevant info. If you had done an alignment that could map multiple
+Salmonella intervals to an E. coli region, you'd have to be more
+careful.
+
+So what's the actual sequence?
+
+  >>> key
+  salmLT2[4412140:4412147]
+  >>> print str(key)
+  GGCGTAA
+
+...and that's how you can query an alignment object.
+
+There's an underlying abstraction here that we will discuss in detail
+somewhere else, but basically you can think of the NLMSA as a graph,
+and our query as a graph query: we're asking for all edges between the
+E. coli interval and any other node, and in this case the only edge is
+between E. coli and Salmonella.
+
+Doing the motif searching
+=========================
+
+Actually doing the motif searching is a separate problem, and one that
+is nicely handled by the motility motif searching library.  (Details on
+that somewhere else.)  Briefly, we can use motility to search for a
+variety of motif types, including position-weight matrices, simple DNA
+motifs, and IUPAC motifs; here's an example with a simple motif: ::
+
+   import motility
+   motif = "ATGAGGCAGT"
+   results = motility.find_iupac(str(ecoli_genome), motif)
+
+Here 'results' is a list of coordinates and orientations; we can convert
+them into pygr-style sequence intervals like so: ::
+
+   for (start, stop, orient, match) in results:
+      ecoli_site = ecoli_genome[start:stop]
+      if orient == -1: ecoli_site = -ecoli_site
+
+At this point we can now query our alignment with these sites and get
+out the aligned Salmonella sites, easy as pie!
+
+Putting it all together
+=======================
+
+The code is a bit more complicated once you add in loading and some
+error handling.  First, load in the NLMSA: ::
+
+    # use_virtual_lpo was set to True on save => use to load as well.
+    alignment = cnestedlist.NLMSA('pairbac', 'r', use_virtual_lpo=True)
+
+Retrieve the genome: ::
+
+    # retrieve the E. coli genome from the alignment.
+    ecoli_genome = alignment.seqDict['ecoliK12']
+
+Search (using a position-weight matrix): ::
+
+    results = motility.find_iupac(str(ecoli_genome), motif)
+
+Convert the results into pygr sequences & query the alignment : ::
+
+    for (start, stop, orient, _) in results:
+
+        ecoli_site = ecoli_genome[start:stop]
+        if orient == -1:
+            ecoli_site = -ecoli_site        # reverse complement
+
+
+        edge = alignment[ecoli_site]
+        salm_sites = edge.keys()
+
+and... we're done!  Now we can iterate over these sites and calculate
+all of the statistics we want about position-specific mutations, etc.
+
+(demo this code @CTB)
+
+A retrospective
+===============
+
+First, this is not a toy problem.  This very problem was tackled in our
+2004 paper, and I think there are still a lot of things to be done in
+this area.  Please go ahead and use this code!
+
+Second, this is not a toy solution.  Chris Lee built pygr for the
+purpose of querying the UCSC alignment of 17 vertebrate genomes, which
+is over 200gb in size.  Nearly identical query code works for that
+data set, as well!  (Obviously the NLMSA *construction* code is a bit
+more complicated...)
+
+Third, experienced bioinformatics programmers will recognize that I've
+elided or overlooked a *huge* number of issues with this analysis,
+both programmatic and scientific.  That's intentional -- I'm trying to
+lure people into using pygr, not overwhelm them with details!  If you
+have questions that you think should be addressed here, please let me
+know and (if I agree) I'll discuss them.
+
+What I hope you will take away from this is that *once you know how to
+use pygr*, you can do some pretty cool things with fairly simple code.
+pygr does have a fair amount of apparent magic in it, but the core
+idea used above is that pygr lets you retrieve features (including
+alignments) by sequence interval.  That's what we're using to pull out
+aligned sequence from Salmonella quickly.
+
+One of the most important aspects of the code above is that however
+difficult it is to construct the alignments and NLMSA objects, it's
+*really* easy to query them, and in fact there are a number of very
+flexible ways to do that that we'll go into somewhere else.  More
+importantly, though, I can actually store different kinds of
+alignments -- a blastz alignment, say -- into an NLMSA object and use
+*exactly* the same readout script.  That's pretty neat (and in fact
+it's something I've wanted to do for a while; it will probably show
+up in one of the next examples).
+
+That concludes this lightspeed introduction to pygr and pairwise NLMSAs!
+
+Acknowledgements and License
+============================
+
+Chris Lee helped me extensively with this example code.
+
+Do with this code what you will.  Citing me would be nice.

@@ -1,0 +1,173 @@
+=====================================================
+Retrieving sequence annotations by location with pygr
+=====================================================
+
+Creating sequences and annotations
+==================================
+
+First, define a simple annotation class.  It *must* have an ID (that
+identifies the sequence that it references), as well as a start and a
+stop position on the sequence.
+
+   >>> class Annot:
+   ...    def __init__(self, name, id, start, stop):
+   ...       self.name = name
+   ...       self.id = id
+   ...       self.start = start
+   ...       self.stop = stop
+
+Create a simple dictionary of annotations:
+
+   >>> annotations = {}
+   >>> annotations['exon1'] = Annot('exon1', 'chrI', 0, 50)
+   >>> annotations['exon2'] = Annot('exon2', 'chrI', 200, 500)
+
+Now, load in a FASTA file containing the sequences you want to annotate --
+in this case, 'example.fa' contains only one sequence, 'chrI'.
+
+   >>> from pygr import seqdb
+   >>> genome = seqdb.BlastDB('example.fa')
+
+Finally, create an "annotation database" linking the annotations to the
+sequence:
+
+   >>> annotation_db = seqdb.AnnotationDB(annotations, genome)
+
+Now you can easily retrieve the sequence to which the annotation points,
+get a subslice, etc.:
+
+   >>> exon1 = annotation_db['exon1']
+   >>> len(exon1)
+   50
+   >>> print exon1[40:50].sequence
+   aagcctaagc
+
+That's not too impressive, of course, because you already *had* that
+information in each annotation object!  What about the reverse --
+retrieving annotations corresponding to sequence intervals?  For
+example, perhaps you want to know whether or not there's an exon that
+overlaps a particular conserved region?
+
+Well, first you have to build a reverse mapping.  That's what we do in
+the next section.
+
+Mapping annotations onto the sequence
+=====================================
+
+The NLMSA is the data structure used to store mappings between
+sequence objects (such as for an alignment), and it also accomodates
+*annotations*.  First, let's create an empty one named 'test' that
+we'll just keep in memory:
+
+   >>> from pygr import cnestedlist
+   >>> annotations_map = cnestedlist.NLMSA('test', mode='memory',
+   ...                                     use_virtual_lpo=True)
+
+Now, let's add all of the annotations into it:
+
+   >>> for v in annotation_db.values():
+   ...    annotations_map.addAnnotation(v)
+
+And, finally, we have to tell it that we're done adding things (for now)
+and let it build all the indexes etc. that it needs to support fast
+queries:
+
+   >>> annotations_map.build()
+
+Querying the sequence for annotations
+=====================================
+
+Now that we have the NLMSA built, we can just use it!  Let's start by
+getting *all* annotations on the 'chrI' sequence:
+
+   >>> chrI = genome['chrI']
+   >>> keys = annotations_map[chrI].keys()
+   >>> keys
+   [annotexon1[0:50], annotexon2[0:300]]
+
+Well, that's more or less what we'd expect - except for 'annotexon2'
+going from 0 to 300, rather than 200 to 500 on chrI.  That's because
+that annotation is actually representing itself as a 300-base long
+*annotation*; if we look at the underlying *sequence*, we'll see
+what we expect to see:
+
+   >>> exon2 = keys[1]
+   >>> exon2.sequence
+   chrI[200:500]
+
+Yes, exon2 does indeed map back to chrI[200:500] as we expect.  What
+happens if we slice exon2?
+
+   >>> exon2[30:50]
+   annotexon2[30:50]
+   >>> exon2[30:50].sequence
+   chrI[230:250]
+
+Annotations behave like sequence slice objects, and everything
+works out properly.
+
+Note that we can just as easily query for features that only overlap
+the 300th base in chrI:
+
+   >>> annotations_map[chrI[300:301]].keys()
+   [annotexon2[100:101]]
+
+So, this is actually a really nice solution to a somewhat vexing
+problem: how can we annotate a sequence with a variety of features and
+then query the sequence to retrieve those features?  Well, the pygr
+NLMSA/AnnotationDB framework is one very convenient such way: it
+allows for basic annotations, fast retrieval thereof, the attachment
+of arbitrary information to annotations, and saving/reloading of both
+the annotation DB and the mapping.
+
+A Demonstration: Mapping and Retrieving ChIP-chip Signals
+=========================================================
+
+Let's consider one possible use for this: mapping tiled microarray
+probes (and associated data) onto genomic sequence.  Consider the
+situation in which you have done a pulldown of genomic DNA attached to
+some transcription factor and run it across a microarray containing
+genomic probes (a.k.a. `ChIP-chip
+<http://en.wikipedia.org/wiki/Chromatin_immunoprecipitation>`__).  Now
+you want to write a program that lets you query any piece of genomic
+DNA to retrieve overlapping probes and their signals.  How can we do
+this in pygr?
+
+Well, suppose we're given the probe data in a simple tab-delimited format
+that contains the following information:
+
+ - a unique probe ID
+ - the signal over background of that probe
+ - the start and end location of that probe on genomic DNA
+
+Here's the code I wrote for loading in the probe data and mapping them
+onto my sequences as annotations: ::
+
+    print 'reading signal pairs'
+    probe_dict = read_signal_pairs(probe_data)
+
+    print 'reading genome scaffolds'
+    scaffolds = seqdb.BlastDB(scaffold_file)
+
+    print 'constructing probe annotations'
+    annotations = seqdb.AnnotationDB(dict(probe_dict), scaffolds,
+                                     annotationType='probe:')
+
+    probe_map = cnestedlist.NLMSA('probe_map', mode='memory',
+                                  use_virtual_lpo=True, bidirectional=False)
+
+    for annotation in annotations.values():
+        probe_map.addAnnotation(annotation)
+
+    probe_map.build()
+
+Before we discuss this code, let me just say that at point, I can now
+retrieve probe information like so: ::
+
+    region_of_interest = scaffolds[scaffold_name][start:end]
+
+    overlapping_probes = probe_map[region_of_interest].keys()
+
+Here I've *inverted* the data: I was *given* a bunch of probes that
+mapped to specific positions on the sequence, and now I can *query*
+the probes with sequences to find which probe(s) map there.
